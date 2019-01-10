@@ -10,8 +10,8 @@ After=network-online.target
 [Service]
 Type=idle
 # Note: These need to be modified to reflect the system location
-WorkingDirectory=/home/micronets-dev/projects/micronets/micronets-infrastructure 
-ExecStart=/home/micronets-dev/projects/micronets/micronets-infrastructure/micronets-mud-manager.virtualenv/bin/python bin/mudWS.py
+WorkingDirectory=/home/micronets-dev/projects/micronets/micronets-mud-tools 
+ExecStart=/home/micronets-dev/projects/micronets/micronets-mud-tools/virtualenv/bin/python bin/mudWS.py
 User=micronets-dev
 Group=micronets-dev
 StandardOutput=syslog
