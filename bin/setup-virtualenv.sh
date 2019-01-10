@@ -11,7 +11,7 @@ fi
 
 echo "BASE_DIR: $BASE_DIR"
 
-MUDMANAGER_VIRTENV_NAME=micronets-mud-manager.virtualenv
+MUDMANAGER_VIRTENV_NAME=virtualenv
 
 # This requires the "virtualenv" package to be installed
 
@@ -22,4 +22,4 @@ virtualenv --clear -p $(which python2.7) $BASE_DIR/$MUDMANAGER_VIRTENV_NAME
 
 source $MUDMANAGER_VIRTENV_NAME/bin/activate
 
-pip install -r micronets-mud-manager.requirements.txt
+pip install -r requirements.txt
