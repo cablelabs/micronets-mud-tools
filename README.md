@@ -11,7 +11,7 @@ From the micronets-mud-tools directory, perform the following steps:
 
 Setup the virtualenv:
 ```
-bin/setup-virtualenv-mudmanager.sh
+bin/setup-virtualenv.sh
 ```
 
 Start the MUD manger:
@@ -36,8 +36,7 @@ The Application mounted at '' has an empty config.
 ```
 
 The MUD Manager can be stopped via Control-C. But it will also be stopped if/when the terminal session 
-the proxy is started from terminates. It can also be run via "nohup". But running it via systemd is the
-preferred method (see below).
+the proxy is started from terminates. The MUD Manager can also be run via systemd or Docker (see below).
 
 ### 1.2 Running the MUD Manager using systemd
 
@@ -50,7 +49,7 @@ bin/setup-virtualenv.sh
 
 An example systemd service control file `micronets-mud-manager.service` is provided in the source 
 distribution. The "WorkingDirectory" and "ExecStart" entries need to be modified to match the
-location of the MUD Manager virtualenv and python program. And the "User" and "Group" settings
+location of the MUD Manager virtualenv and python code. And the "User" and "Group" settings
 should be set to the "micronets" user (or commented out to run as "root") E.g.
 
 ```
@@ -67,22 +66,22 @@ sudo systemctl enable $PWD/micronets-mud-manager.service
 sudo systemctl daemon-reload
 ```
 
-Once the micronets-mud-manager service is installed, it can be run using:
+Once the micronets-mud-manager service is installed, it can be started using:
 
 ```
 sudo systemctl start micronets-mud-manager.service
 ```
 
-Where the logging will be stored is system-dependent. On Ubuntu 16.04 systems
+Where the logging will be written is system-dependent. On Ubuntu 16.04 systems
 logging will be written to `/var/log/syslog`.
 
-The status of the proxy can be checked using:
+The status of the manager can be checked using:
 
 ```
 sudo systemctl status micronets-mud-manager.service
 ```
 
-and the proxy stopped using:
+and the manager can be stopped using:
 
 ```
 sudo systemctl stop micronets-mud-manager.service
@@ -90,22 +89,30 @@ sudo systemctl stop micronets-mud-manager.service
 
 ### 1.3 Running the MUD Manager using Docker
 
-#### 1.3.1 To build the Docker image:
+The MUD Manager distro includes a Dockerfile that can be used to construct
+Docker images.
+
+To build the Docker image:
 
 ```
 docker build --tag=micronets-mud-manager .
 ```
 
-#### 1.3.2 To start a container locally and run it in the background:
+To start a container locally and run it in the background:
 
-On Linux:
 ```
 docker run -d --network host micronets-mud-manager 
 ```
 
-On MacOS:
+If running On MacOS (e.g. for testing):
 ```
-docker run -d -p 8888:8888 micronets-mud-manager
+docker run -d -p 8888:8888 --name micronets-mud-manager micronets-mud-manager
+```
+
+To stop the docker container:
+
+```
+docker kill micronets-mud-manager
 ```
 
 #### 1.6.3 Deploying a docker image to Artifactory
