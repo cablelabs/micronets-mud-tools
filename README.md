@@ -101,7 +101,7 @@ docker build --tag=micronets-mud-manager .
 To start a container locally and run it in the background:
 
 ```
-docker run -d --network host micronets-mud-manager 
+docker run -d --network host --restart unless-stopped --name micronets-mud-manager-service micronets-mud-manager 
 ```
 
 If running On MacOS (e.g. for testing):
