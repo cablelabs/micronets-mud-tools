@@ -2,6 +2,7 @@
 
 # MUD JSON file => ACLs.
 
+import sys
 import json
 import socket
 
@@ -22,7 +23,7 @@ class MudParser:
         #mudObj = json.load(jsonfile)
         #jsonfile.close()
 
-        # the name of from-device-policy 
+        # the name of from-device-policy
         fromDevicePolicyName=mudObj["ietf-mud:mud"]["from-device-policy"]\
                                    ["access-lists"]["access-list"][0]["name"]
 
@@ -70,21 +71,27 @@ class MudParser:
         #
         num = len(fromDeviceACL)
         for i in range(num):
-            sip = None
-            if "ietf-mud:mud" in fromDeviceACL[i]["matches"] and \
-               "local-networks" in fromDeviceACL[i]["matches"]["ietf-mud:mud"]: 
-                sip = fromDeviceACL[i]["matches"]["ietf-mud:mud"]["local-networks"][0]
-            if sip == None: 
-                sip = deviceIP
-
             dip = None
+            # print "fromDeviceACL: " + str(fromDeviceACL[i]) + '\n'
+            if "ietf-mud:mud" in fromDeviceACL[i]["matches"]:
+                aclMudExtension = fromDeviceACL[i]["matches"]["ietf-mud:mud"].keys()[0]
+                # print "fromDeviceACL:   found MUD extension: " + str(aclMudExtension)
+                # For all the no-param acl extensions, just use the extension name as the dest IP
+                #  (with an optional param, colon-separated
+                if "local-networks" in aclMudExtension \
+                    or "same-manufacturer" in aclMudExtension \
+                    or "my-controller" in aclMudExtension:
+                    dip = aclMudExtension
+                elif "model" in aclMudExtension \
+                    or "manufacturer" in aclMudExtension \
+                    or "controller" in aclMudExtension:
+                    aclMudExtensionParam = fromDeviceACL[i]["matches"]["ietf-mud:mud"][aclMudExtension]
+                    # print "fromDeviceACL:   found MUD extension param: " + str(aclMudExtensionParam)
+                    dip = aclMudExtension + ":" + aclMudExtensionParam
             if "ipv4" in fromDeviceACL[i]["matches"] and \
                     "ietf-acldns:dst-dnsname" in fromDeviceACL[i]["matches"]["ipv4"]: 
                 dip = fromDeviceACL[i]["matches"]["ipv4"]["ietf-acldns:dst-dnsname"]
-
-            if "ietf-mud:mud" in fromDeviceACL[i]["matches"] and \
-                    "controller" in fromDeviceACL[i]["matches"]["ietf-mud:mud"]: 
-                dip = fromDeviceACL[i]["matches"]["ietf-mud:mud"]["controller"]
+            # print "fromDeviceACL:   dip: " + dip + '\n'
 
             sport = 0
             if "tcp" in fromDeviceACL[i]["matches"] and \
@@ -97,9 +104,10 @@ class MudParser:
                 dport = fromDeviceACL[i]["matches"]["tcp"]["destination-port"]["port"]
 
             action = fromDeviceACL[i]["actions"]["forwarding"]
+            # print "fromDeviceACL:   action " + action
 
             if version == "1.0": 
-                flowRules["acls"].append({"sip":sip, "dip":dip, \
+                flowRules["acls"].append({"dip":dip, \
                                       "sport": sport, "dport":dport, \
                                       "action": action}) 
             elif version == "1.1": 
@@ -136,14 +144,18 @@ class MudParser:
         #TranslatedIp = socket.gethostbyname(host)
         #print(TranslatedIp)
 
+        # print "Returning flowRules: " + str(flowRules)
         return flowRules
      
 if __name__ == '__main__':
 
     mud = MudParser()
+    mudFile = sys.argv[1]
 
-    jsonfile =  open("lightbulb.json", "r") 
+    jsonfile =  open(mudFile, "r")
     mudObj = json.load(jsonfile)
     jsonfile.close()
 
-    mud.getACL(mudObj, "1.1.1.1")
+    acls = mud.getACL("1.1", mudObj, "1.1.1.1")
+
+    print json.dumps(acls, indent=4)
