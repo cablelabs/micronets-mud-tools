@@ -25,9 +25,9 @@ class InvalidUsage (Exception):
         self.payload = payload
 
     def to_dict (self):
-        rv = dict (self.payload or ())
-        rv ['message'] = self.message
-        rv ['status_code'] = self.status_code
+        rv = dict(self.payload or ())
+        rv['message'] = self.message
+        rv['status_code'] = self.status_code
         return rv
 
 # This installs the handler to turn the InvalidUsage exception into a response
@@ -84,7 +84,6 @@ def check_for_unrecognized_entries (container, allowed_field_names):
     return True
 
 def request_follow_redirects(url, method, headers):
-    print(f"opening: {url}")
     o = urlparse(url,allow_fragments=True)
     conn = http.client.HTTPSConnection (o.netloc)
     path = o.path
@@ -92,14 +91,12 @@ def request_follow_redirects(url, method, headers):
         path = path + '?' + o.query
     conn.request(method, path, "{}", headers)
     resp = conn.getresponse()
-    print(f"Response status: {resp.status}")
-    print(f"Response reason: {resp.reason}")
     resp_headers = dict(resp.getheaders())
     location = resp_headers.get('Location')
     if location:
-        print(f"Redirect location: {location}")
+        print(f"Redirecting to: {location}")
         return request_follow_redirects(location, method, headers)
-    return resp.read()
+    return resp
 
 @app.route('/getFlowRules', methods=['POST'])
 async def get_flow_rules():
@@ -111,16 +108,42 @@ async def get_flow_rules():
     check_for_unrecognized_entries(post_data,['url','version','ip'])
     url_str = check_field(post_data, 'url', str, True)
     logger.info (f"getFlowRules: url: {url_str}")
-    url = urlparse(url_str)
+    mud_url = urlparse(url_str)
 
-    mud_data = request_follow_redirects(url.geturl(), "GET",{})
-    print("MUD data:")
-    print(mud_data)
+    mud_data_response = request_follow_redirects(mud_url.geturl(), "GET",{})
+    if mud_data_response.status != 200:
+        logger.info(f"Could not retrieve MUD URL {mud_url} - bailing out")
+        raise InvalidUsage (400, message="Could not retrieve MUD URL {mud_url} (received status code {mud_data_response.status})")
 
-    mud_filepath = mud_cache_path / ((url.netloc + url.path).replace("/","_"))
-    logger.info(f"Saving MUD path {url_str} to: {mud_filepath}")
-    # TODO: Save MUD body to file
+    mud_data = mud_data_response.read()
+    # print("MUD data:")
+    # print(mud_data)
+
+    mud_filepath = mud_cache_path / ((mud_url.netloc + mud_url.path).replace("/","_"))
+    logger.info(f"Saving MUD from {url_str} to {mud_filepath}...")
     
+    with mud_filepath.open ('wb') as mudfile:
+        mudfile.write(mud_data)
+
+    logger.info(f"Saved MUD {url_str} to {mud_filepath}")
+    mudsig_url_str = mud_url.scheme+"://"+mud_url.netloc+mud_url.path+".p7s"
+    if mud_url.query:
+        mudsig_url_str = mudsig_url_str + "?" + mudsig_url.query
+
+    mudsig_url = urlparse(mudsig_url_str)
+    logger.info(f"Attempting to retrieve MUD signature from {mudsig_url_str}")
+    mudsig_data_response = request_follow_redirects(mudsig_url_str, "GET",{})
+    if mudsig_data_response.status != 200:
+        logger.info(f"Could not retrieve MUD signature URL {mudsig_url} (received status code {mudsig_data_response.status})")
+    else:
+        logger.info(f"Successfully retrieved {mudsig_url}")
+        mudsig_data = mudsig_data_response.read()
+        mudsig_filepath = mud_cache_path / ((mudsig_url.netloc + mudsig_url.path).replace("/","_"))
+        logger.info(f"Saving MUD from {mudsig_url_str} to {mudsig_filepath}...")
+    
+        with mudsig_filepath.open ('wb') as mudsigfile:
+            mudsigfile.write(mudsig_data)
+
     return "{}"
 
 async def check_mud_signature(mud_filename, mud_sig_filename):
