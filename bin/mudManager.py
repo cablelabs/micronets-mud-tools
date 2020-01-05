@@ -1,12 +1,9 @@
-import os
+import os, subprocess, logging, http.client
 
 from quart import Quart, request, jsonify
 from pathlib import Path
-
-import http.client
 from urllib.parse import urlparse
 
-import logging
 
 logger = logging.getLogger ('micronets-mud-manager')
 logging_filename=None
@@ -98,6 +95,13 @@ def request_follow_redirects(url, method, headers):
         return request_follow_redirects(location, method, headers)
     return resp
 
+def file_signature_validates(filepath, sigpath):
+    cp = subprocess.run(["openssl","smime","-verify","-in",str(sigpath),
+                         "-inform","DER","-content",str(filepath)], 
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    logger.info(f"Signature validation command returned {cp}")
+    return cp.returncode == 0
+
 @app.route('/getFlowRules', methods=['POST'])
 async def get_flow_rules():
     if not request.is_json:
@@ -113,7 +117,7 @@ async def get_flow_rules():
     mud_data_response = request_follow_redirects(mud_url.geturl(), "GET",{})
     if mud_data_response.status != 200:
         logger.info(f"Could not retrieve MUD URL {mud_url} - bailing out")
-        raise InvalidUsage (400, message="Could not retrieve MUD URL {mud_url} (received status code {mud_data_response.status})")
+        raise InvalidUsage (400, message=f"Could not retrieve MUD URL {mud_url} (received status code {mud_data_response.status})")
 
     mud_data = mud_data_response.read()
     # print("MUD data:")
@@ -143,12 +147,12 @@ async def get_flow_rules():
     
         with mudsig_filepath.open ('wb') as mudsigfile:
             mudsigfile.write(mudsig_data)
+        if file_signature_validates(mud_filepath, mudsig_filepath):
+            logger.info(f"Successfully validated MUD file {mud_filepath} (via {mudsig_filepath})")
+        else:
+            raise InvalidUsage (400, message=f"{mud_filepath} failed signature validation (via {mudsig_filepath})")            
 
     return "{}"
-
-async def check_mud_signature(mud_filename, mud_sig_filename):
-    # cp = subprocess.run(["openssl","smime","-verify","-in","controller.p7s","-inform","DER","-content","controller.json.badbadbad"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    pass
 
 mud_cache_dir = os.environ.get('MUD_CACHE_DIR') or '/tmp/mud_cache_dir'
 mud_cache_path = Path(mud_cache_dir)
