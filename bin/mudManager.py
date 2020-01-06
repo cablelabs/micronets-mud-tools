@@ -122,8 +122,7 @@ async def get_flow_rules():
         raise InvalidUsage (400, message=f"Could not retrieve MUD URL {mud_url} (received status code {mud_data_response.status})")
 
     mud_data = mud_data_response.read()
-    # print("MUD data:")
-    # print(mud_data)
+    # print("MUD data: {mud_data}")
 
     mud_filepath = mud_cache_path / ((mud_url.netloc + mud_url.path).replace("/","_"))
     logger.info(f"Saving MUD from {url_str} to {mud_filepath}...")
@@ -132,7 +131,11 @@ async def get_flow_rules():
         mudfile.write(mud_data)
 
     logger.info(f"Saved MUD {url_str} to {mud_filepath}")
-    mudsig_url_str = mud_url.scheme+"://"+mud_url.netloc+mud_url.path+".p7s"
+    if mud_url.path.endswith(".json"):
+        base_path = mud_url.path[0:-5]
+    else:
+        base_path = mud_url.path
+    mudsig_url_str = mud_url.scheme+"://"+mud_url.netloc+base_path+".p7s"
     if mud_url.query:
         mudsig_url_str = mudsig_url_str + "?" + mudsig_url.query
 
