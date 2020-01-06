@@ -102,7 +102,7 @@ def file_signature_validates(filepath, sigpath):
     # logger.info(f"Signature validation command returned {cp}")
     status_msg = cp.stderr.decode("utf-8").strip()
     logger.info(f"Signature validation command returned status {cp.returncode} ({status_msg})")
-    return cp.returncode == 0
+    return (cp.returncode == 0, status_msg)
 
 @app.route('/getFlowRules', methods=['POST'])
 async def get_flow_rules():
@@ -152,10 +152,11 @@ async def get_flow_rules():
     
         with mudsig_filepath.open ('wb') as mudsigfile:
             mudsigfile.write(mudsig_data)
-        if file_signature_validates(mud_filepath, mudsig_filepath):
+        (validated, validation_msg) = file_signature_validates(mud_filepath, mudsig_filepath)
+        if validated:
             logger.info(f"Successfully validated MUD file {mud_filepath} (via {mudsig_filepath})")
         else:
-            raise InvalidUsage (400, message=f"{mud_filepath} failed signature validation (via {mudsig_filepath})")            
+            raise InvalidUsage (400, message=f"{url_str} failed signature validation (via {mudsig_url_str})")
 
     return "{}"
 
