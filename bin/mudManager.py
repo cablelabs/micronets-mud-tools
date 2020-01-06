@@ -99,7 +99,9 @@ def file_signature_validates(filepath, sigpath):
     cp = subprocess.run(["openssl","smime","-verify","-in",str(sigpath),
                          "-inform","DER","-content",str(filepath)], 
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    logger.info(f"Signature validation command returned {cp}")
+    # logger.info(f"Signature validation command returned {cp}")
+    status_msg = cp.stderr.decode("utf-8").strip()
+    logger.info(f"Signature validation command returned status {cp.returncode} ({status_msg})")
     return cp.returncode == 0
 
 @app.route('/getFlowRules', methods=['POST'])
