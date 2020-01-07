@@ -111,11 +111,22 @@ async def get_flow_rules():
     logger.info (f"getFlowRules called with: {post_data}")
     print(post_data)
     check_for_unrecognized_entries(post_data,['url','version','ip'])
-    url_str = check_field(post_data, 'url', str, True)
+    mud_url_str = check_field(post_data, 'url', str, True)
     version = check_field(post_data, 'version', str, True)
 
-    logger.info (f"getFlowRules: url: {url_str}")
-    mud_url = urlparse(url_str)
+    mud_data = getMUDFile(mud_url_str)
+    mud_json = json.loads(mud_data)
+    logger.debug(f"mud_json: ")
+    logger.debug(json.dumps(mud_json, indent=4))
+
+    acls = getACLs(version, mud_json)
+    logger.info(f"acls: {acls}")
+
+    return json.dumps(acls, indent=4)
+
+def getMUDFile(mud_url_str):
+    logger.info (f"getMUDFile: url: {mud_url_str}")
+    mud_url = urlparse(mud_url_str)
 
     mud_data_response = request_follow_redirects(mud_url.geturl(), "GET",{})
     if mud_data_response.status != 200:
@@ -126,12 +137,12 @@ async def get_flow_rules():
     # print("MUD data: {mud_data}")
 
     mud_filepath = mud_cache_path / ((mud_url.netloc + mud_url.path).replace("/","_"))
-    logger.info(f"Saving MUD from {url_str} to {mud_filepath}...")
+    logger.info(f"Saving MUD from {mud_url_str} to {mud_filepath}...")
     
     with mud_filepath.open ('wb') as mudfile:
         mudfile.write(mud_data)
 
-    logger.info(f"Saved MUD {url_str} to {mud_filepath}")
+    logger.info(f"Saved MUD {mud_url_str} to {mud_filepath}")
     if mud_url.path.endswith(".json"):
         base_path = mud_url.path[0:-5]
     else:
@@ -157,16 +168,9 @@ async def get_flow_rules():
         if validated:
             logger.info(f"Successfully validated MUD file {mud_filepath} (via {mudsig_filepath})")
         else:
-            raise InvalidUsage (400, message=f"{url_str} failed signature validation (via {mudsig_url_str})")
+            raise InvalidUsage (400, message=f"{mud_url_str} failed signature validation (via {mudsig_url_str})")
 
-    mud_json = json.loads(mud_data)
-    logger.debug(f"mud_json: ")
-    logger.debug(json.dumps(mud_json, indent=4))
-
-    acls = getACLs(version, mud_json)
-    logger.info(f"acls: {acls}")
-
-    return "{}"
+    return mud_data    
 
 def getACLs(version, mudObj):
     #
