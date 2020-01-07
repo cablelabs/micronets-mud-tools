@@ -1,9 +1,8 @@
-import os, subprocess, logging, http.client
+import os, subprocess, logging, http.client, json
 
 from quart import Quart, request, jsonify
 from pathlib import Path
 from urllib.parse import urlparse
-
 
 logger = logging.getLogger ('micronets-mud-manager')
 logging_filename=None
@@ -113,6 +112,8 @@ async def get_flow_rules():
     print(post_data)
     check_for_unrecognized_entries(post_data,['url','version','ip'])
     url_str = check_field(post_data, 'url', str, True)
+    version = check_field(post_data, 'version', str, True)
+
     logger.info (f"getFlowRules: url: {url_str}")
     mud_url = urlparse(url_str)
 
@@ -158,7 +159,116 @@ async def get_flow_rules():
         else:
             raise InvalidUsage (400, message=f"{url_str} failed signature validation (via {mudsig_url_str})")
 
+    mud_json = json.loads(mud_data)
+    logger.debug(f"mud_json: ")
+    logger.debug(json.dumps(mud_json, indent=4))
+
+    acls = getACLs(version, mud_json)
+    logger.info(f"acls: {acls}")
+
     return "{}"
+
+def getACLs(version, mudObj):
+    #
+    # Parse the JSON MUD file to extract Match rules"
+    #
+
+    # the name of from-device-policy
+    fromDevicePolicyName=mudObj["ietf-mud:mud"]["from-device-policy"]\
+                               ["access-lists"]["access-list"][0]["name"]
+
+    # the name of to-device-policy 
+    toDevicePolicyName=mudObj["ietf-mud:mud"]["to-device-policy"]\
+                             ["access-lists"]["access-list"][0]["name"]
+ 
+    #
+    # In the case there are multiple access-lists for each direction
+    #
+    # num = len(outBoundACLs)
+    # for item in range(num):
+    #     print(outBoundACLs[item]["name"])
+
+    # num = len(inBoundACLs)
+    # for item in range(num):
+    #    print(inBoundACLs[item]["name"])
+
+    # Actual ACLs
+    if fromDevicePolicyName == \
+            mudObj["ietf-access-control-list:acls"]["acl"][0]["name"]: 
+        fromDeviceACL= \
+            mudObj["ietf-access-control-list:acls"]["acl"][0]["aces"]["ace"]
+        toDeviceACL= \
+            mudObj["ietf-access-control-list:acls"]["acl"][1]["aces"]["ace"]
+    else:
+        fromDeviceACL= \
+            mudObj["ietf-access-control-list:acls"]["acl"][1]["aces"]["ace"]
+        toDeviceACL= \
+            mudObj["ietf-access-control-list:acls"]["acl"][0]["aces"]["ace"]
+    
+    # aclData= '{"acls": [{"sip": "10.10.1.1", "dip": "0.0.0.0", "sport": 0, "dport":"80","action": "accept" }]}' 
+
+    flowRules = {}
+
+    if version == "1.0":
+        flowRules= {"acls": []}
+    elif version == "1.1":
+        flowRules = {"device": {"deviceId": "", "macAddress": {"eui48": ""}, "networkAddress": {"ipv4": ""},  "allowHosts": [], "denyHosts": [] } }
+
+    #
+    # Obtain fromDeviceACL
+    #
+    num = len(fromDeviceACL)
+    logger.info(f"fromDeviceACL: {fromDeviceACL}")
+    # logger.info(f"fromDeviceACL {fromDeviceACL['name']} has {num} elements")
+    for i in range(num):
+        dip = None
+        logger.info(f"Looking at fromDeviceACL: {fromDeviceACL[i]}" )
+        if "ietf-mud:mud" in fromDeviceACL[i]["matches"]:
+            mud_match = fromDeviceACL[i]['matches']['ietf-mud:mud']
+            logger.info(f"Found ietf-mud:mud: {mud_match}" )
+            (aclMudExtension, aclMudExtensionParam) = list(mud_match.items())[0]
+            
+            # For all the no-param acl extensions, just use the extension name as the dest IP
+            #  (with an optional param, colon-separated
+            if "local-networks" in aclMudExtension \
+                or "same-manufacturer" in aclMudExtension \
+                or "my-controller" in aclMudExtension:
+                dip = aclMudExtension
+            elif "model" in aclMudExtension \
+                or "manufacturer" in aclMudExtension \
+                or "controller" in aclMudExtension:
+                aclMudExtensionParam = list(mud_match.values())[0]
+                print(f"fromDeviceACL:   found MUD extension param: {aclMudExtensionParam}")
+                dip = aclMudExtension + ":" + aclMudExtensionParam
+        if "ipv4" in fromDeviceACL[i]["matches"] and \
+                "ietf-acldns:dst-dnsname" in fromDeviceACL[i]["matches"]["ipv4"]: 
+            dip = fromDeviceACL[i]["matches"]["ipv4"]["ietf-acldns:dst-dnsname"]
+        print(f"fromDeviceACL:   dip: {dip}")
+
+        sport = 0
+        if "tcp" in fromDeviceACL[i]["matches"] and \
+                "source-port" in fromDeviceACL[i]["matches"]["tcp"]: 
+            sport = fromDeviceACL[i]["matches"]["tcp"]["source-port"]["port"]
+
+        dport = 0
+        if "tcp" in fromDeviceACL[i]["matches"] and \
+                "destination-port" in fromDeviceACL[i]["matches"]["tcp"]: 
+            dport = fromDeviceACL[i]["matches"]["tcp"]["destination-port"]["port"]
+
+        action = fromDeviceACL[i]["actions"]["forwarding"]
+        # print "fromDeviceACL:   action " + action
+
+        if version == "1.0": 
+            flowRules["acls"].append({"dip":dip, \
+                                  "sport": sport, "dport":dport, \
+                                  "action": action}) 
+        elif version == "1.1": 
+            if action == "accept" and dip != None : 
+                flowRules["device"]["allowHosts"].append(dip)
+            elif action == "reject": 
+                flowRules["device"]["denyHosts"].append(dip)
+
+    return flowRules
 
 mud_cache_dir = os.environ.get('MUD_CACHE_DIR') or '/tmp/mud_cache_dir'
 mud_cache_path = Path(mud_cache_dir)
