@@ -3,6 +3,7 @@ import os, subprocess, logging, http.client, json
 from quart import Quart, request, jsonify
 from pathlib import Path
 from urllib.parse import urlparse
+from datetime import datetime, timedelta
 
 logger = logging.getLogger ('micronets-mud-manager')
 logging_filename=None
@@ -114,10 +115,9 @@ async def get_flow_rules():
     mud_url_str = check_field(post_data, 'url', str, True)
     version = check_field(post_data, 'version', str, True)
 
-    mud_data = getMUDFile(mud_url_str)
-    mud_json = json.loads(mud_data)
-    logger.debug(f"mud_json: ")
-    logger.debug(json.dumps(mud_json, indent=4))
+    mud_json = getMUDFile(mud_url_str)
+    # logger.debug(f"mud_json: ")
+    # logger.debug(json.dumps(mud_json, indent=4))
 
     acls = getACLs(version, mud_json)
     logger.info(f"acls: {acls}")
@@ -127,50 +127,80 @@ async def get_flow_rules():
 def getMUDFile(mud_url_str):
     logger.info (f"getMUDFile: url: {mud_url_str}")
     mud_url = urlparse(mud_url_str)
-
-    mud_data_response = request_follow_redirects(mud_url.geturl(), "GET",{})
-    if mud_data_response.status != 200:
-        logger.info(f"Could not retrieve MUD URL {mud_url} - bailing out")
-        raise InvalidUsage (400, message=f"Could not retrieve MUD URL {mud_url} (received status code {mud_data_response.status})")
-
-    mud_data = mud_data_response.read()
-    # print("MUD data: {mud_data}")
-
     mud_filepath = mud_cache_path / ((mud_url.netloc + mud_url.path).replace("/","_"))
-    logger.info(f"Saving MUD from {mud_url_str} to {mud_filepath}...")
-    
-    with mud_filepath.open ('wb') as mudfile:
-        mudfile.write(mud_data)
+    logger.info(f"getMUDFile: mud filepath for {mud_url_str}: {mud_filepath}...")
 
-    logger.info(f"Saved MUD {mud_url_str} to {mud_filepath}")
-    if mud_url.path.endswith(".json"):
-        base_path = mud_url.path[0:-5]
-    else:
-        base_path = mud_url.path
-    mudsig_url_str = mud_url.scheme+"://"+mud_url.netloc+base_path+".p7s"
-    if mud_url.query:
-        mudsig_url_str = mudsig_url_str + "?" + mudsig_url.query
+    mud_json = None
+    if mud_filepath.exists():
+        # Check the cache and return the MUD from the cache if it hasn't expired
+        logger.info(f"getMUDFile: LOADING {mud_url_str} from CACHE ({mud_filepath})")
+        mud_json = json.loads(mud_filepath.open().read())
 
-    mudsig_url = urlparse(mudsig_url_str)
-    logger.info(f"Attempting to retrieve MUD signature from {mudsig_url_str}")
-    mudsig_data_response = request_follow_redirects(mudsig_url_str, "GET",{})
-    if mudsig_data_response.status != 200:
-        logger.info(f"Could not retrieve MUD signature URL {mudsig_url} (received status code {mudsig_data_response.status})")
-    else:
-        logger.info(f"Successfully retrieved {mudsig_url}")
-        mudsig_data = mudsig_data_response.read()
-        mudsig_filepath = mud_cache_path / ((mudsig_url.netloc + mudsig_url.path).replace("/","_"))
-        logger.info(f"Saving MUD from {mudsig_url_str} to {mudsig_filepath}...")
-    
-        with mudsig_filepath.open ('wb') as mudsigfile:
-            mudsigfile.write(mudsig_data)
-        (validated, validation_msg) = file_signature_validates(mud_filepath, mudsig_filepath)
-        if validated:
-            logger.info(f"Successfully validated MUD file {mud_filepath} (via {mudsig_filepath})")
+    if not mud_json:
+        # The MUD needs to be retrieved from the origin server
+        logger.info(f"getMUDFile: RETRIEVING {mud_url_str}")
+        mud_data_response = request_follow_redirects(mud_url.geturl(), "GET",{})
+        if mud_data_response.status != 200:
+            logger.info(f"Could not retrieve MUD URL {mud_url} - bailing out")
+            raise InvalidUsage (400, message=f"Could not retrieve MUD URL {mud_url} (received status code {mud_data_response.status})")
+
+        mud_data = mud_data_response.read()
+        # print("MUD data: {json.dumps(mud_json,indent=4)}")
+
+        logger.info(f"Saving MUD from {mud_url_str} to {mud_filepath}...")
+
+        with mud_filepath.open ('wb') as mudfile:
+            mudfile.write(mud_data)
+
+        logger.info(f"Saved MUD {mud_url_str} to {mud_filepath}")
+
+        # Attemt to retrieve the MUD signature
+        if mud_url.path.endswith(".json"):
+            base_path = mud_url.path[0:-5]
         else:
-            raise InvalidUsage (400, message=f"{mud_url_str} failed signature validation (via {mudsig_url_str})")
+            base_path = mud_url.path
+        mudsig_url_str = mud_url.scheme+"://"+mud_url.netloc+base_path+".p7s"
+        if mud_url.query:
+            mudsig_url_str = mudsig_url_str + "?" + mudsig_url.query
 
-    return mud_data    
+        mudsig_url = urlparse(mudsig_url_str)
+        logger.info(f"Attempting to retrieve MUD signature from {mudsig_url_str}")
+        mudsig_data_response = request_follow_redirects(mudsig_url_str, "GET",{})
+        if mudsig_data_response.status != 200:
+            logger.info(f"Could not retrieve MUD signature from {mudsig_url} (received status code {mudsig_data_response.status})")
+        else:
+            logger.info(f"Successfully retrieved MUD signature {mudsig_url}")
+            mudsig_data = mudsig_data_response.read()
+            mudsig_filepath = mud_cache_path / ((mudsig_url.netloc + mudsig_url.path).replace("/","_"))
+            logger.info(f"Saving MUD from {mudsig_url_str} to {mudsig_filepath}...")
+
+            with mudsig_filepath.open ('wb') as mudsigfile:
+                mudsigfile.write(mudsig_data)
+            (validated, validation_msg) = file_signature_validates(mud_filepath, mudsig_filepath)
+            mudsig_filepath.unlink()
+            if validated:
+                logger.info(f"Successfully validated MUD file {mud_filepath} (via {mudsig_filepath})")
+            else:
+                mudfile.unlink()
+                raise InvalidUsage (400, message=f"{mud_url_str} failed signature validation (via {mudsig_url_str})")
+        mud_json = json.loads(mud_data)
+
+        # Save expiration time for the MUD file
+        cache_validity_hours = mud_json['ietf-mud:mud']['cache-validity']
+        logger.info(f"cache-validity for {mud_url_str} is {cache_validity_hours} hours")
+
+        cache_validity_delta = timedelta(hours=cache_validity_hours)
+        cache_validity_datetime = datetime.today() + cache_validity_delta
+        logger.info(f"expiration for {mud_url_str} is {cache_validity_datetime.isoformat()}")
+
+        mud_md_filepath = Path(str(mud_filepath) + ".md")
+        mud_md_dict = {"expiration-timestamp": str(cache_validity_datetime.timestamp())}
+        logger.info(f"Dict for {mud_url_str}: {mud_md_dict}")
+        mud_md_json = json.dumps(mud_md_dict, indent=3) + "\n"
+        mud_md_filepath.write_text(mud_md_json)
+        logger.info(f"Wrote metadata for {mud_url_str}: {mud_md_json}")
+
+    return mud_json
 
 def getACLs(version, mudObj):
     #
