@@ -100,9 +100,12 @@ def file_signature_validates(filepath, sigpath):
                          "-inform","DER","-content",str(filepath)], 
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     # logger.info(f"Signature validation command returned {cp}")
-    status_msg = cp.stderr.decode("utf-8").strip()
-    logger.info(f"Signature validation command returned status {cp.returncode} ({status_msg})")
-    return (cp.returncode == 0, status_msg)
+    status_msg = cp.stderr.decode("utf-8")
+    status_lines = status_msg.splitlines(keepends=True)
+    status_msg = status_lines[0].strip()
+    error_output = "".join(status_lines[1:])
+    logger.debug(f"Signature validation command returned status {cp.returncode} ({status_msg})")
+    return (cp.returncode == 0, status_msg, error_output)
 
 @app.route('/getFlowRules', methods=['POST'])
 async def get_flow_rules():
@@ -128,16 +131,31 @@ def getMUDFile(mud_url_str):
     logger.info (f"getMUDFile: url: {mud_url_str}")
     mud_url = urlparse(mud_url_str)
     mud_filepath = mud_cache_path / ((mud_url.netloc + mud_url.path).replace("/","_"))
+    mud_md_filepath = Path(str(mud_filepath) + ".md")
     logger.info(f"getMUDFile: mud filepath for {mud_url_str}: {mud_filepath}...")
 
     mud_json = None
+    # Check the cache and return the MUD from the cache if it hasn't expired
     if mud_filepath.exists():
-        # Check the cache and return the MUD from the cache if it hasn't expired
-        logger.info(f"getMUDFile: LOADING {mud_url_str} from CACHE ({mud_filepath})")
-        mud_json = json.loads(mud_filepath.open().read())
+        if not mud_md_filepath.exists():
+            logger.warn(f"getMUDFile: FAILED loading MD file {mud_md_filepath} from CACHE - DELETING {mud_filepath}")
+            mud_filepath.unlink()
+        else:
+            mud_md_json = json.loads(mud_md_filepath.open().read())
+            cache_expiration_timestamp_str = mud_md_json["expiration-timestamp"]
+            cache_expiration_timestamp = datetime.fromtimestamp(cache_expiration_timestamp_str)
+            logger.debug(f"getMUDFile: {mud_md_filepath} expiration is "
+                         + cache_expiration_timestamp.isoformat())
+            if datetime.today() < cache_expiration_timestamp:
+                logger.info(f"getMUDFile: LOADING {mud_url_str} from CACHE ({mud_filepath})")
+                mud_json = json.loads(mud_filepath.open().read())
+            else:
+                logger.info(f"getMUDFile: EXPIRING {mud_url_str} from CACHE ({mud_filepath})")
+                mud_filepath.unlink()
+                mud_md_filepath.unlink()
 
     if not mud_json:
-        # The MUD needs to be retrieved from the origin server
+        # Retrieve the MUD from the origin server
         logger.info(f"getMUDFile: RETRIEVING {mud_url_str}")
         mud_data_response = request_follow_redirects(mud_url.geturl(), "GET",{})
         if mud_data_response.status != 200:
@@ -147,12 +165,10 @@ def getMUDFile(mud_url_str):
         mud_data = mud_data_response.read()
         # print("MUD data: {json.dumps(mud_json,indent=4)}")
 
-        logger.info(f"Saving MUD from {mud_url_str} to {mud_filepath}...")
-
         with mud_filepath.open ('wb') as mudfile:
             mudfile.write(mud_data)
 
-        logger.info(f"Saved MUD {mud_url_str} to {mud_filepath}")
+        logger.debug(f"Saved MUD {mud_url_str} to {mud_filepath}")
 
         # Attemt to retrieve the MUD signature
         if mud_url.path.endswith(".json"):
@@ -164,25 +180,35 @@ def getMUDFile(mud_url_str):
             mudsig_url_str = mudsig_url_str + "?" + mudsig_url.query
 
         mudsig_url = urlparse(mudsig_url_str)
+        # TODO: Check for a "mud-signature" element and use that path if/when it exists
         logger.info(f"Attempting to retrieve MUD signature from {mudsig_url_str}")
         mudsig_data_response = request_follow_redirects(mudsig_url_str, "GET",{})
         if mudsig_data_response.status != 200:
-            logger.info(f"Could not retrieve MUD signature from {mudsig_url} (received status code {mudsig_data_response.status})")
+            # No MUD sig retrieved - carry on w/o validation
+            logger.debug(f"Could not retrieve MUD a signature from {mudsig_url} (received status code {mudsig_data_response.status})")
+            logger.info(f"No signature found for {mudsig_url} - continuing...")
         else:
+            # MUD sig retrieved - now the MUD must validate with the sig (or fail)
             logger.info(f"Successfully retrieved MUD signature {mudsig_url}")
             mudsig_data = mudsig_data_response.read()
             mudsig_filepath = mud_cache_path / ((mudsig_url.netloc + mudsig_url.path).replace("/","_"))
-            logger.info(f"Saving MUD from {mudsig_url_str} to {mudsig_filepath}...")
-
-            with mudsig_filepath.open ('wb') as mudsigfile:
+            with mudsig_filepath.open('wb') as mudsigfile:
                 mudsigfile.write(mudsig_data)
-            (validated, validation_msg) = file_signature_validates(mud_filepath, mudsig_filepath)
+            logger.info(f"Saved MUD signature from {mudsig_url_str} to {mudsig_filepath}")
+
+            (validated, validation_msg, error_msg) \
+                = file_signature_validates(mud_filepath, mudsig_filepath)
             mudsig_filepath.unlink()
             if validated:
-                logger.info(f"Successfully validated MUD file {mud_filepath} (via {mudsig_filepath})")
+                logger.info(f"MUD signature validation SUCCESS "
+                            f"(MUD file {mud_filepath}, sig file {mudsig_filepath})")
             else:
-                mudfile.unlink()
-                raise InvalidUsage (400, message=f"{mud_url_str} failed signature validation (via {mudsig_url_str})")
+                logger.info(f"MUD signature validation FAILURE "
+                            f"(MUD file {mud_filepath}, sig file {mudsig_filepath})")
+                logger.info(f"Signature failure details: \n{error_msg}")
+                mud_filepath.unlink()
+                raise InvalidUsage (400, message=f"{mud_url_str} failed signature validation (via {mudsig_url_str}): "
+                                                 + validation_msg)
         mud_json = json.loads(mud_data)
 
         # Save expiration time for the MUD file
@@ -193,8 +219,7 @@ def getMUDFile(mud_url_str):
         cache_validity_datetime = datetime.today() + cache_validity_delta
         logger.info(f"expiration for {mud_url_str} is {cache_validity_datetime.isoformat()}")
 
-        mud_md_filepath = Path(str(mud_filepath) + ".md")
-        mud_md_dict = {"expiration-timestamp": str(cache_validity_datetime.timestamp())}
+        mud_md_dict = {"expiration-timestamp": cache_validity_datetime.timestamp()}
         logger.info(f"Dict for {mud_url_str}: {mud_md_dict}")
         mud_md_json = json.dumps(mud_md_dict, indent=3) + "\n"
         mud_md_filepath.write_text(mud_md_json)
@@ -256,7 +281,6 @@ def getACLs(version, mudObj):
     # logger.info(f"fromDeviceACL {fromDeviceACL['name']} has {num} elements")
     for i in range(num):
         dip = None
-        logger.info(f"Looking at fromDeviceACL: {fromDeviceACL[i]}" )
         if "ietf-mud:mud" in fromDeviceACL[i]["matches"]:
             mud_match = fromDeviceACL[i]['matches']['ietf-mud:mud']
             logger.info(f"Found ietf-mud:mud: {mud_match}" )
