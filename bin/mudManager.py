@@ -16,24 +16,28 @@ bin_path = Path (__file__).parent
 
 arg_parser = argparse.ArgumentParser(description='A MUD Manager that generates Micronets-compatible ACLs')
 
-arg_parser.add_argument ('--ca-cert', "-ca", required=False, action='append', type=open,
+arg_parser.add_argument ('--ca-certs', "-cac", required=False, action='store', type=open,
                          default = os.environ.get('MICRONETS_MUD_CA_CERT'),
-                         help="add the given CA cert to the list of trusted root certs")
+                         help="add the given CA cert to the list of trusted root certs (or MICRONETS_MUD_CA_CERT)")
+arg_parser.add_argument ('--ca-path', "-cap", required=False, action='store', type=str,
+                         default = os.environ.get('MICRONETS_MUD_CA_PATH') or "/etc/ssl/certs",
+                         help="add the given CA cert to the list of trusted root certs (or MICRONETS_MUD_CA_PATH)")
 arg_parser.add_argument ('--bind-address', "-a", required=False, action='store', type=str,
                          default=os.environ.get('MICRONETS_MUD_BIND_ADDRESS') or "0.0.0.0",
-                         help="specify the address to bind the MUD manager to")
+                         help="specify the address to bind the MUD manager to (or MICRONETS_MUD_BIND_ADDRESS)")
 arg_parser.add_argument ('--bind-port', "-p", required=False, action='store', type=int,
                          default = os.environ.get('MICRONETS_MUD_BIND_PORT') or 5000,
-                         help="specify the port to bind the MUD manager to")
+                         help="specify the port to bind the MUD manager to (or MICRONETS_MUD_BIND_PORT)")
 arg_parser.add_argument ('--cache-dir', "-cd", required=False, action='store', type=str,
                          default = os.environ.get('MICRONETS_MUD_CACHE_DIR') or '/var/cache/micronets-mud',
-                         help="add the given CA cert to the list of trusted root certs")
+                         help="add the given CA cert to the list of trusted root certs (or MICRONETS_MUD_CACHE_DIR)")
 
 args = arg_parser.parse_args ()
 
 logger.info(f"Bind address: {args.bind_address}")
 logger.info(f"Bind port: {args.bind_port}")
-logger.info(f"Additional CA certs: {args.ca_cert}")
+logger.info(f"CA path: {args.ca_path}")
+logger.info(f"Additional CA certs: {args.ca_certs.name if args.ca_certs else None}")
 logger.info(f"MUD cache directory: {args.cache_dir}")
 
 mud_cache_path = Path(args.cache_dir)
@@ -120,7 +124,7 @@ def check_for_unrecognized_entries (container, allowed_field_names):
 
 def request_follow_redirects(url, method, headers):
     o = urlparse(url,allow_fragments=True)
-    conn = http.client.HTTPSConnection (o.netloc)
+    conn = http.client.HTTPSConnection (o.netloc, context=ssl_context)
     path = o.path
     if o.query:
         path = path + '?' + o.query
@@ -366,19 +370,9 @@ def getACLs(version, mudObj):
 
     return flowRules
 
-# ssl_context = ssl.SSLContext (ssl.PROTOCOL_TLS_CLIENT)
-#
-# # Setup the client's cert
-# print ("Loading test client certificate from", args.client_cert.name)
-# ssl_context.load_cert_chain (args.client_cert.name)
-#
-# # Verify peer certs using the websocket root as the CA
-# print ("Loading CA certificate from", args.ca_cert.name)
-#
-# ssl_context.load_verify_locations (cafile = args.ca_cert.name)
-# ssl_context.verify_mode = ssl.VerifyMode.CERT_REQUIRED
+ssl_context = ssl.SSLContext (ssl.PROTOCOL_TLS_CLIENT)
+ssl_context.load_verify_locations (cafile = args.ca_certs.name if args.ca_certs else None, capath=args.ca_path)
+ssl_context.verify_mode = ssl.VerifyMode.CERT_REQUIRED
 # ssl_context.check_hostname = False
-
-# mud_cache_path = Path(mud_cache_dir)
 
 app.run(args.bind_address, args.bind_port)
