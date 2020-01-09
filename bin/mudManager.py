@@ -1,4 +1,4 @@
-import os, subprocess, logging, http.client, json
+import os, subprocess, logging, http.client, json, ssl, argparse
 
 from quart import Quart, request, jsonify
 from pathlib import Path
@@ -12,7 +12,45 @@ logging.basicConfig (level=logging.DEBUG, filename=logging_filename, filemode=lo
                      format='%(asctime)s %(name)s: %(levelname)s %(message)s')
 app_dir = os.path.abspath(os.path.dirname (__file__))
 
+bin_path = Path (__file__).parent
+
+arg_parser = argparse.ArgumentParser(description='A MUD Manager that generates Micronets-compatible ACLs')
+
+arg_parser.add_argument ('--ca-cert', "-ca", required=False, action='append', type=open,
+                         default = os.environ.get('MICRONETS_MUD_CA_CERT'),
+                         help="add the given CA cert to the list of trusted root certs")
+arg_parser.add_argument ('--bind-address', "-a", required=False, action='store', type=str,
+                         default=os.environ.get('MICRONETS_MUD_BIND_ADDRESS') or "0.0.0.0",
+                         help="specify the address to bind the MUD manager to")
+arg_parser.add_argument ('--bind-port', "-p", required=False, action='store', type=int,
+                         default = os.environ.get('MICRONETS_MUD_BIND_PORT') or 5000,
+                         help="specify the port to bind the MUD manager to")
+arg_parser.add_argument ('--cache-dir', "-cd", required=False, action='store', type=str,
+                         default = os.environ.get('MICRONETS_MUD_CACHE_DIR') or '/var/cache/micronets-mud',
+                         help="add the given CA cert to the list of trusted root certs")
+
+args = arg_parser.parse_args ()
+
+logger.info(f"Bind address: {args.bind_address}")
+logger.info(f"Bind port: {args.bind_port}")
+logger.info(f"Additional CA certs: {args.ca_cert}")
+logger.info(f"MUD cache directory: {args.cache_dir}")
+
+mud_cache_path = Path(args.cache_dir)
+if not mud_cache_path.exists():
+    mud_cache_path.mkdir(parents=True)
+if not mud_cache_path.is_dir():
+    raise argparse.ArgumentTypeError("The MUD cache directory ({args.cache_dir}) is not valid and cannot be created")
+
 app = Quart(__name__)
+
+
+# mud_cache_path = Path(mud_cache_dir)
+# if not mud_cache_path.exists():
+#     mud_cache_path.mkdir(parents=True)
+# if not mud_cache_path.is_dir():
+#     raise Exception(f"{mud_cache_dir} is not a directory")
+
 
 class InvalidUsage (Exception):
     def __init__ (self, status_code, message, payload=None):
@@ -170,7 +208,7 @@ def getMUDFile(mud_url_str):
 
         logger.debug(f"Saved MUD {mud_url_str} to {mud_filepath}")
 
-        # Attemt to retrieve the MUD signature
+        # Attempt to retrieve the MUD signature
         if mud_url.path.endswith(".json"):
             base_path = mud_url.path[0:-5]
         else:
@@ -328,11 +366,19 @@ def getACLs(version, mudObj):
 
     return flowRules
 
-mud_cache_dir = os.environ.get('MUD_CACHE_DIR') or '/tmp/mud_cache_dir'
-mud_cache_path = Path(mud_cache_dir)
-if not mud_cache_path.exists():
-    mud_cache_path.mkdir(parents=True)
-if not mud_cache_path.is_dir():
-    raise Exception(f"{mud_cache_dir} is not a directory")
+# ssl_context = ssl.SSLContext (ssl.PROTOCOL_TLS_CLIENT)
+#
+# # Setup the client's cert
+# print ("Loading test client certificate from", args.client_cert.name)
+# ssl_context.load_cert_chain (args.client_cert.name)
+#
+# # Verify peer certs using the websocket root as the CA
+# print ("Loading CA certificate from", args.ca_cert.name)
+#
+# ssl_context.load_verify_locations (cafile = args.ca_cert.name)
+# ssl_context.verify_mode = ssl.VerifyMode.CERT_REQUIRED
+# ssl_context.check_hostname = False
 
-app.run("0.0.0.0")
+# mud_cache_path = Path(mud_cache_dir)
+
+app.run(args.bind_address, args.bind_port)
