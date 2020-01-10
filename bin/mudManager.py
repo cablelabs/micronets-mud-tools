@@ -227,11 +227,11 @@ def getMUDFile(mud_url_str):
         mudsig_data_response = request_follow_redirects(mudsig_url_str, "GET",{})
         if mudsig_data_response.status != 200:
             # No MUD sig retrieved - carry on w/o validation
-            logger.debug(f"Could not retrieve MUD a signature from {mudsig_url} (received status code {mudsig_data_response.status})")
-            logger.info(f"No signature found for {mudsig_url} - continuing...")
+            logger.debug(f"Could not retrieve a MUD signature from {mudsig_url_str} (received status code {mudsig_data_response.status})")
+            logger.info(f"No signature found for {mudsig_url_str} - continuing...")
         else:
             # MUD sig retrieved - now the MUD must validate with the sig (or fail)
-            logger.info(f"Successfully retrieved MUD signature {mudsig_url}")
+            logger.info(f"Successfully retrieved MUD signature {mudsig_url_str}")
             mudsig_data = mudsig_data_response.read()
             mudsig_filepath = mud_cache_path / ((mudsig_url.netloc + mudsig_url.path).replace("/","_"))
             with mudsig_filepath.open('wb') as mudsigfile:
