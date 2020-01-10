@@ -164,7 +164,7 @@ async def get_flow_rules():
     # logger.debug(f"mud_json: ")
     # logger.debug(json.dumps(mud_json, indent=4))
 
-    acls = getACLs(version, mud_json)
+    acls = getACLs(version, mud_json, post_data['ip'])
     logger.info(f"acls: {acls}")
 
     return json.dumps(acls, indent=4)
@@ -269,7 +269,7 @@ def getMUDFile(mud_url_str):
 
     return mud_json
 
-def getACLs(version, mudObj):
+def getACLs(version, mudObj, devAddress):
     #
     # Parse the JSON MUD file to extract Match rules"
     #
@@ -313,8 +313,10 @@ def getACLs(version, mudObj):
     if version == "1.0":
         flowRules= {"acls": []}
     elif version == "1.1":
-        flowRules = {"device": {"deviceId": "", "macAddress": {"eui48": ""}, "networkAddress": {"ipv4": ""},  "allowHosts": [], "denyHosts": [] } }
-
+        flowRules = {"device":
+                         {"deviceId": "", "macAddress": {"eui48": ""},
+                          "networkAddress": {"ipv4": f"{devAddress}"},
+                          "allowHosts": [], "denyHosts": [] } }
     #
     # Obtain fromDeviceACL
     #
