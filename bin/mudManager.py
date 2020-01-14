@@ -155,7 +155,6 @@ async def get_flow_rules():
         raise InvalidUsage (400, message="supplied data is not a valid json object")
     post_data = await request.get_json()
     logger.info (f"getFlowRules called with: {post_data}")
-    print(post_data)
     check_for_unrecognized_entries(post_data,['url','version','ip'])
     mud_url_str = check_field(post_data, 'url', str, True)
     version = check_field(post_data, 'version', str, True)
@@ -167,7 +166,20 @@ async def get_flow_rules():
     acls = getACLs(version, mud_json, post_data['ip'])
     logger.info(f"acls: {acls}")
 
-    return json.dumps(acls, indent=4)
+    return json.dumps(acls, indent=4), 200, {'Content-Type': 'application/json'}
+
+@app.route('/getMudFile', methods=['POST'])
+async def get_mud_file():
+    if not request.is_json:
+        raise InvalidUsage (400, message="supplied data is not a valid json object")
+    post_data = await request.get_json()
+    logger.info (f"getMudFile called with: {post_data}")
+    check_for_unrecognized_entries(post_data,['url'])
+    mud_url_str = check_field(post_data, 'url', str, True)
+
+    mud_json = getMUDFile(mud_url_str)
+
+    return json.dumps(mud_json, indent=4), 200, {'Content-Type': 'application/json'}
 
 def getMUDFile(mud_url_str):
     logger.info (f"getMUDFile: url: {mud_url_str}")
