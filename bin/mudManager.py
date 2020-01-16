@@ -31,6 +31,9 @@ arg_parser.add_argument ('--bind-port', "-p", required=False, action='store', ty
 arg_parser.add_argument ('--cache-dir', "-cd", required=False, action='store', type=str,
                          default = os.environ.get('MICRONETS_MUD_CACHE_DIR') or '/var/cache/micronets-mud',
                          help="add the given CA cert to the list of trusted root certs (or MICRONETS_MUD_CACHE_DIR)")
+arg_parser.add_argument ('--controller', "-con", required=False, action='store', type=str,
+                         default = os.environ.get('MICRONETS_MUD_CONTROLLER') or None,
+                         help="the hostname or address that should be provided for \"controller\" MUD entries")
 
 args = arg_parser.parse_args ()
 
@@ -39,6 +42,7 @@ logger.info(f"Bind port: {args.bind_port}")
 logger.info(f"CA path: {args.ca_path}")
 logger.info(f"Additional CA certs: {args.ca_certs.name if args.ca_certs else None}")
 logger.info(f"MUD cache directory: {args.cache_dir}")
+logger.info(f"Controller: {args.controller}")
 
 mud_cache_path = Path(args.cache_dir)
 if not mud_cache_path.exists():
@@ -156,6 +160,7 @@ async def get_flow_rules():
     post_data = await request.get_json()
     logger.info (f"getFlowRules called with: {post_data}")
     check_for_unrecognized_entries(post_data,['url','version','ip'])
+    # TODO: Add support for a controller name-to-addresslist dict
     mud_url_str = check_field(post_data, 'url', str, True)
     version = check_field(post_data, 'version', str, True)
 
@@ -163,7 +168,7 @@ async def get_flow_rules():
     # logger.debug(f"mud_json: ")
     # logger.debug(json.dumps(mud_json, indent=4))
 
-    acls = getACLs(version, mud_json, post_data['ip'])
+    acls = getACLs(version, mud_json, post_data['ip'], args.controller)
     logger.info(f"acls: {acls}")
 
     return json.dumps(acls, indent=4), 200, {'Content-Type': 'application/json'}
@@ -281,7 +286,7 @@ def getMUDFile(mud_url_str):
 
     return mud_json
 
-def getACLs(version, mudObj, devAddress):
+def getACLs(version, mudObj, devAddress, controllerAddress):
     #
     # Parse the JSON MUD file to extract Match rules"
     #
@@ -343,17 +348,22 @@ def getACLs(version, mudObj, devAddress):
             (aclMudExtension, aclMudExtensionParam) = list(mud_match.items())[0]
             
             # For all the no-param acl extensions, just use the extension name as the dest IP
-            #  (with an optional param, colon-separated
+            #  (with an optional param, colon-separated)
+
             if "local-networks" in aclMudExtension \
                 or "same-manufacturer" in aclMudExtension \
                 or "my-controller" in aclMudExtension:
                 dip = aclMudExtension
             elif "model" in aclMudExtension \
-                or "manufacturer" in aclMudExtension \
-                or "controller" in aclMudExtension:
+                or "manufacturer" in aclMudExtension:
                 aclMudExtensionParam = list(mud_match.values())[0]
                 print(f"fromDeviceACL:   found MUD extension param: {aclMudExtensionParam}")
                 dip = aclMudExtension + ":" + aclMudExtensionParam
+            elif "controller" in aclMudExtension:
+                if (controllerAddress):
+                    # TODO: Make this an associative lookup
+                    flowRules["device"]["allowHosts"].append(controllerAddress)
+
         if "ipv4" in fromDeviceACL[i]["matches"] and \
                 "ietf-acldns:dst-dnsname" in fromDeviceACL[i]["matches"]["ipv4"]: 
             dip = fromDeviceACL[i]["matches"]["ipv4"]["ietf-acldns:dst-dnsname"]
