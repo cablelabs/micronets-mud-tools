@@ -186,6 +186,27 @@ async def get_mud_file():
 
     return json.dumps(mud_json, indent=4), 200, {'Content-Type': 'application/json'}
 
+@app.route('/getMudInfo', methods=['POST'])
+async def get_mud_file_info():
+    if not request.is_json:
+        raise InvalidUsage (400, message="supplied data is not a valid json object")
+    post_data = await request.get_json()
+    logger.info (f"getMudInfo called with: {post_data}")
+    check_for_unrecognized_entries(post_data,['url'])
+    mud_url_str = check_field(post_data, 'url', str, True)
+
+    mud_json = getMUDFile(mud_url_str)
+    # logger.debug(f"mud_json: ")
+    # logger.debug(json.dumps(mud_json, indent=4))
+
+    mud_header = mud_json["ietf-mud:mud"]
+    mud_info = {"mfgName": mud_header["mfg-name"],
+                "modelName": mud_header["model-name"]}
+
+    logger.info(f"mud info: {mud_info}")
+
+    return json.dumps(mud_info), 200, {'Content-Type': 'application/json'}
+
 def getMUDFile(mud_url_str):
     logger.info (f"getMUDFile: url: {mud_url_str}")
     mud_url = urlparse(mud_url_str)
