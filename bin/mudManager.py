@@ -142,8 +142,8 @@ def request_follow_redirects(url, method, headers):
     return resp
 
 def file_signature_validates(filepath, sigpath):
-    cp = subprocess.run(["openssl","smime","-verify","-in",str(sigpath),
-                         "-inform","DER","-content",str(filepath)], 
+    cp = subprocess.run(["openssl","cms","-verify","-in",str(sigpath),
+                         "-inform","DER","-binary","-content",str(filepath)],
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     # logger.info(f"Signature validation command returned {cp}")
     status_msg = cp.stderr.decode("utf-8")
