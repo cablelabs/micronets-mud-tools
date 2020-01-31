@@ -21,4 +21,4 @@ docker-kill:
 	docker kill micronets-mud-manager-service
 
 docker-rm: docker-kill
-    docker rm micronets-mud-manager-service
+	docker rm micronets-mud-manager-service
