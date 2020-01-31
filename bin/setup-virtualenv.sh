@@ -18,7 +18,7 @@ MUDMANAGER_VIRTENV_NAME=virtualenv
 cd "$BASE_DIR"
 
 echo "Creating virtualenv $MUDMANAGER_VIRTENV_NAME (in $BASE_DIR/$MUDMANAGER_VIRTENV_NAME)"
-virtualenv --clear -p $(which python2.7) $BASE_DIR/$MUDMANAGER_VIRTENV_NAME
+virtualenv --clear -p $(which python3.6) $BASE_DIR/$MUDMANAGER_VIRTENV_NAME
 
 source $MUDMANAGER_VIRTENV_NAME/bin/activate
 
