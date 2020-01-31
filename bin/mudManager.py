@@ -187,7 +187,7 @@ async def get_mud_file():
     return json.dumps(mud_json, indent=4), 200, {'Content-Type': 'application/json'}
 
 @app.route('/getMudInfo', methods=['POST'])
-async def get_mud_file_info():
+async def get_mud_info():
     if not request.is_json:
         raise InvalidUsage (400, message="supplied data is not a valid json object")
     post_data = await request.get_json()
@@ -201,7 +201,8 @@ async def get_mud_file_info():
 
     mud_header = mud_json["ietf-mud:mud"]
     mud_info = {"mfgName": mud_header["mfg-name"],
-                "modelName": mud_header["model-name"]}
+                "modelName": mud_header["model-name"],
+                "mudUrl": mud_header["mud-url"]}
 
     logger.info(f"mud info: {mud_info}")
 
