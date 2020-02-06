@@ -200,9 +200,10 @@ async def get_mud_info():
     # logger.debug(json.dumps(mud_json, indent=4))
 
     mud_header = mud_json["ietf-mud:mud"]
-    mud_info = {"mfgName": mud_header["mfg-name"],
-                "modelName": mud_header["model-name"],
-                "mudUrl": mud_header["mud-url"]}
+
+    mud_info = {"mfgName": mud_header.get("mfg-name"),
+                "modelName": mud_header.get("model-name"),
+                "mudUrl": mud_header.get("mud-url")}
 
     logger.info(f"mud info: {mud_info}")
 
