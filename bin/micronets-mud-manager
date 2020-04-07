@@ -2,7 +2,7 @@
 
 set -e
 
-# Uncomment this on to debug the script
+# Uncomment this to debug the script
 # set -x
 
 shortname="${0##*/}"
@@ -48,6 +48,8 @@ function print_usage()
     echo "     docker-trace: Watch the logs for the $shortname docker container"
     echo "     docker-address|addr: Print the IP addresses for the $shortname docker container"
     echo "     docker-env: List the environment variables for the $shortname docker container"
+    echo "     setup-cache-dir: Create the MUD cache directory"
+    echo "     clear-cache-dir: Clear the MUD cache"
     echo ""
     echo "   [--docker-image <docker image ID>"
     echo "       (default \"$DEF_IMAGE_LOCATION\")"
@@ -57,7 +59,7 @@ function print_usage()
     echo "       (default \"$DEF_CONTAINER_NAME\")"
     echo "   [--mud-cache-path <mud cache directory to mount in container>"
     echo "       (default \"$DEF_MUD_CACHE_PATH\")"
-    echo "   [--bind-address <addresd to bind ${shortname} to>"
+    echo "   [--bind-address <address to bind ${shortname} to>"
     echo "       (default \"$DEF_BIND_ADDRESS\")"
     echo "   [--bind-port <port to bind ${shortname} to>"
     echo "       (default \"$DEF_BIND_PORT\")"
@@ -106,6 +108,10 @@ function process_arguments()
             bailout_with_usage "Unrecognized option: $opt_name"
         fi
     done
+
+    if [ ! -d $mud_cache_path ]; then
+        bailout "Invalid MUD cache directory: $mud_cache_path"
+    fi
 
     if [ $# -lt 1 ]; then
         bailout_with_usage "Missing operation"
@@ -165,6 +171,17 @@ function docker-trace()
 {
     echo "Tracing logs for container \"$container_name\""
     $DOCKER_CMD container logs --timestamps --follow --tail 50 $container_name
+}
+
+function setup-cache-dir()
+{
+    sudo install -v -o root -m 755 -d "$mud_cache_path"
+}
+
+function clear-cache-dir()
+{
+    sudo rm -v "$mud_cache_path/*"
+    # Note: The MUD Manager doesn't require a restart
 }
 
 #
