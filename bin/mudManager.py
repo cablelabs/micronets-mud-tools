@@ -14,7 +14,8 @@ app_dir = os.path.abspath(os.path.dirname (__file__))
 
 bin_path = Path (__file__).parent
 
-arg_parser = argparse.ArgumentParser(description='A MUD Manager that generates Micronets-compatible ACLs')
+arg_parser = argparse.ArgumentParser(description='A MUD Manager that generates Micronets-compatible ACLs',
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 arg_parser.add_argument ('--ca-certs', "-cac", required=False, action='store', type=open,
                          default = os.environ.get('MICRONETS_MUD_CA_CERT'),

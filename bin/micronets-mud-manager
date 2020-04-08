@@ -1,0 +1,193 @@
+#!/bin/bash
+
+set -e
+
+# Uncomment this to debug the script
+# set -x
+
+shortname="${0##*/}"
+script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+DOCKER_CMD="docker"
+DEF_IMAGE_LOCATION="community.cablelabs.com:4567/micronets-docker/micronets-mud-manager"
+DEF_IMAGE_TAG=latest
+DEF_CONTAINER_NAME=micronets-mud-manager-service
+DEF_LIB_PATH=/etc/micronets/micronets-mud-manager.d/lib
+DEF_MUD_CACHE_PATH=/var/cache/micronets-mud
+DEF_BIND_PORT=8888
+DEF_BIND_ADDRESS=0.0.0.0
+
+function bailout()
+{
+    local message="$1"
+    echo "$shortname: error: ${message}" >&2
+    exit 1;
+}
+
+function bailout_with_usage()
+{
+    local message="$1"
+    echo "$shortname: error: ${message}" >&2
+    print_usage
+    exit 1;
+}
+
+function print_usage()
+{
+    echo " "
+    echo "Usage: ${shortname} <operation>"
+    echo ""
+    echo "   operation can be one of:"
+    echo ""
+    echo "     docker-pull: Download the $shortname docker image"
+    echo "     docker-run: Create and start the $shortname docker container"
+    echo "     docker-status: Show the status of the $shortname docker container"
+    echo "     docker-kill: Kill the $shortname docker container"
+    echo "     docker-restart: Restart the $shortname docker container"
+    echo "     docker-logs: Show the logs for $shortname docker container"
+    echo "     docker-trace: Watch the logs for the $shortname docker container"
+    echo "     docker-address|addr: Print the IP addresses for the $shortname docker container"
+    echo "     docker-env: List the environment variables for the $shortname docker container"
+    echo "     setup-cache-dir: Create the MUD cache directory"
+    echo "     clear-cache-dir: Clear the MUD cache"
+    echo ""
+    echo "   [--docker-image <docker image ID>"
+    echo "       (default \"$DEF_IMAGE_LOCATION\")"
+    echo "   [--docker-image-tag <docker image tag>"
+    echo "       (default \"$DEF_IMAGE_TAG\")"
+    echo "   [--docker-name <docker name to assign>"
+    echo "       (default \"$DEF_CONTAINER_NAME\")"
+    echo "   [--mud-cache-path <mud cache directory to mount in container>"
+    echo "       (default \"$DEF_MUD_CACHE_PATH\")"
+    echo "   [--bind-address <address to bind ${shortname} to>"
+    echo "       (default \"$DEF_BIND_ADDRESS\")"
+    echo "   [--bind-port <port to bind ${shortname} to>"
+    echo "       (default \"$DEF_BIND_PORT\")"
+}
+
+function process_arguments()
+{
+    shopt -s nullglob
+    shopt -s shift_verbose
+
+    operation=""
+    docker_image_id="$DEF_IMAGE_LOCATION"
+    docker_image_tag="$DEF_IMAGE_TAG"
+    container_name=$DEF_CONTAINER_NAME
+    mud_cache_path=$DEF_MUD_CACHE_PATH
+    bind_address=$DEF_BIND_ADDRESS
+    bind_port=$DEF_BIND_PORT
+
+    while [[ $1 == --* ]]; do
+        opt_name=$1
+        if [ "$opt_name" == "--docker-image" ]; then
+            shift
+            docker_image_id="$1"
+            shift || bailout_with_usage "missing parameter to $opt_name"
+        elif [ "$opt_name" == "--docker-image-tag" ]; then
+            shift
+            docker_image_tag="$1"
+            shift || bailout_with_usage "missing parameter to $opt_name"
+        elif [ "$opt_name" == "--docker-name" ]; then
+            shift
+            container_name="$1"
+            shift || bailout_with_usage "missing parameter to $opt_name"
+        elif [ "$opt_name" == "--mud-cache-path" ]; then
+            shift
+            mud_cache_path="$1"
+            shift || bailout_with_usage "missing parameter to $opt_name"
+        elif [ "$opt_name" == "--bind-address" ]; then
+            shift
+            bind_address="$1"
+            shift || bailout_with_usage "missing parameter to $opt_name"
+        elif [ "$opt_name" == "--bind-port" ]; then
+            shift
+            bind_port="$1"
+            shift || bailout_with_usage "missing parameter to $opt_name"
+        else
+            bailout_with_usage "Unrecognized option: $opt_name"
+        fi
+    done
+
+    if [ $# -lt 1 ]; then
+        bailout_with_usage "Missing operation"
+    fi
+
+    operation=$1
+    shift
+}
+
+function docker-pull()
+{
+    echo "Pulling docker image from $docker_image_id:$docker_image_tag"
+	$DOCKER_CMD pull $docker_image_id:$docker_image_tag
+}
+
+function docker-run()
+{
+    if [ ! -d $mud_cache_path ]; then
+        bailout "Invalid MUD cache directory: $mud_cache_path"
+    fi
+
+    echo "Starting container \"$container_name\" from $docker_image_id:$docker_image_tag (on $bind_address:$bind_port)"
+    $DOCKER_CMD run --read-only -d --restart unless-stopped \
+        --name $container_name \
+		-v $mud_cache_path:/mud-cache-dir \
+        -p $bind_address:$bind_port:$bind_port \
+        $docker_image_id:$docker_image_tag python3.6 mudManager.py \
+                         --bind-port $bind_port \
+                         --cache-dir /mud-cache-dir
+}
+
+function docker-run-shell()
+{
+    echo "Starting shell for container \"$container_name\" from $docker_image_id:$docker_image_tag (on $bind_address:$bind_port)"
+    $DOCKER_CMD run --read-only \
+        --name $container_name \
+		-v $mud_cache_path:/mud-cache-dir \
+        -p $bind_address:$bind_port:$bind_port \
+        -it $docker_image_id:$docker_image_tag /bin/bash
+}
+
+function docker-rm()
+{
+    echo "Attempting to remove container \"$container_name\""
+    $DOCKER_CMD container rm $container_name
+}
+
+function docker-kill()
+{
+    echo "Attempting to kill container \"$container_name\""
+    $DOCKER_CMD container kill $container_name
+}
+
+function docker-logs()
+{
+    echo "Showing logs for container \"$container_name\""
+    $DOCKER_CMD container logs --timestamps $container_name
+}
+
+function docker-trace()
+{
+    echo "Tracing logs for container \"$container_name\""
+    $DOCKER_CMD container logs --timestamps --follow --tail 50 $container_name
+}
+
+function setup-cache-dir()
+{
+    sudo install -v -o root -m 755 -d "$mud_cache_path"
+}
+
+function clear-cache-dir()
+{
+    sudo rm -v "$mud_cache_path"/*
+    # Note: The MUD Manager doesn't require a restart
+}
+
+#
+# main logic
+#
+
+process_arguments "$@"
+
+$operation
