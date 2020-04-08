@@ -109,10 +109,6 @@ function process_arguments()
         fi
     done
 
-    if [ ! -d $mud_cache_path ]; then
-        bailout "Invalid MUD cache directory: $mud_cache_path"
-    fi
-
     if [ $# -lt 1 ]; then
         bailout_with_usage "Missing operation"
     fi
@@ -129,12 +125,16 @@ function docker-pull()
 
 function docker-run()
 {
+    if [ ! -d $mud_cache_path ]; then
+        bailout "Invalid MUD cache directory: $mud_cache_path"
+    fi
+
     echo "Starting container \"$container_name\" from $docker_image_id:$docker_image_tag (on $bind_address:$bind_port)"
     $DOCKER_CMD run --read-only -d --restart unless-stopped \
         --name $container_name \
 		-v $mud_cache_path:/mud-cache-dir \
         -p $bind_address:$bind_port:$bind_port \
-        $docker_image_id:$docker_image_tag python3.6 websocket-proxy.py \
+        $docker_image_id:$docker_image_tag python3.6 mudManager.py \
                          --bind-port $bind_port \
                          --cache-dir /mud-cache-dir
 }
@@ -180,7 +180,7 @@ function setup-cache-dir()
 
 function clear-cache-dir()
 {
-    sudo rm -v "$mud_cache_path/*"
+    sudo rm -v "$mud_cache_path"/*
     # Note: The MUD Manager doesn't require a restart
 }
 
