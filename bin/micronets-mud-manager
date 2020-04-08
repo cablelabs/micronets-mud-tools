@@ -46,7 +46,7 @@ function print_usage()
     echo "     docker-restart: Restart the $shortname docker container"
     echo "     docker-logs: Show the logs for $shortname docker container"
     echo "     docker-trace: Watch the logs for the $shortname docker container"
-    echo "     docker-address|addr: Print the IP addresses for the $shortname docker container"
+    echo "     docker-address: Print the IP addresses for the $shortname docker container"
     echo "     docker-env: List the environment variables for the $shortname docker container"
     echo "     setup-cache-dir: Create the MUD cache directory"
     echo "     clear-cache-dir: Clear the MUD cache"
@@ -182,6 +182,17 @@ function clear-cache-dir()
 {
     sudo rm -v "$mud_cache_path"/*
     # Note: The MUD Manager doesn't require a restart
+}
+
+function docker-address()
+{
+    ip_address=$($DOCKER_CMD inspect \
+                 -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' \
+                 ${container_name})
+    if [ -z $ip_address ]; then
+        bailout "Could not get the IP address for container $container_id"
+    fi
+    echo "${ip_address}"
 }
 
 #
