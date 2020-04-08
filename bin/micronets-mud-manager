@@ -10,7 +10,7 @@ script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 DOCKER_CMD="docker"
 DEF_IMAGE_LOCATION="community.cablelabs.com:4567/micronets-docker/micronets-mud-manager"
-DEF_IMAGE_TAG=latest
+DEF_IMAGE_TAG=nccoe-build-3
 DEF_CONTAINER_NAME=micronets-mud-manager-service
 DEF_LIB_PATH=/etc/micronets/micronets-mud-manager.d/lib
 DEF_MUD_CACHE_PATH=/var/cache/micronets-mud

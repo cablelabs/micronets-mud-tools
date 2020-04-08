@@ -1,5 +1,5 @@
 DOCKER_REGISTRY := community.cablelabs.com:4567
-DOCKER_IMAGE_PATH := micronets-docker/micronets-mud-manager:latest
+DOCKER_IMAGE_PATH := micronets-docker/micronets-mud-manager:nccoe-build-3
 
 docker-build:
 	docker build -t $(DOCKER_REGISTRY)/$(DOCKER_IMAGE_PATH) .
