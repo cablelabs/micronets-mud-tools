@@ -12,10 +12,9 @@ DOCKER_CMD="docker"
 DEF_IMAGE_LOCATION="community.cablelabs.com:4567/micronets-docker/micronets-mud-manager"
 DEF_IMAGE_TAG=nccoe-build-3
 DEF_CONTAINER_NAME=micronets-mud-manager-service
-DEF_LIB_PATH=/etc/micronets/micronets-mud-manager.d/lib
 DEF_MUD_CACHE_PATH=/var/cache/micronets-mud
 DEF_BIND_PORT=8888
-DEF_BIND_ADDRESS=0.0.0.0
+DEF_BIND_ADDRESS=127.0.0.1
 
 function bailout()
 {
@@ -73,10 +72,10 @@ function process_arguments()
     operation=""
     docker_image_id="$DEF_IMAGE_LOCATION"
     docker_image_tag="$DEF_IMAGE_TAG"
-    container_name=$DEF_CONTAINER_NAME
-    mud_cache_path=$DEF_MUD_CACHE_PATH
-    bind_address=$DEF_BIND_ADDRESS
-    bind_port=$DEF_BIND_PORT
+    container_name="$DEF_CONTAINER_NAME"
+    mud_cache_path="$DEF_MUD_CACHE_PATH"
+    bind_address="$DEF_BIND_ADDRESS"
+    bind_port="$DEF_BIND_PORT"
 
     while [[ $1 == --* ]]; do
         opt_name=$1
