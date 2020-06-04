@@ -6,6 +6,7 @@ set -e
 # set -x
 
 shortname="${0##*/}"
+longname="MUD manager"
 script_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
 DOCKER_CMD="docker"
@@ -15,6 +16,7 @@ DEF_CONTAINER_NAME=micronets-mud-manager-service
 DEF_MUD_CACHE_PATH=/var/cache/micronets-mud
 DEF_BIND_PORT=8888
 DEF_BIND_ADDRESS=127.0.0.1
+DEF_CONTROLLER_ADDRESS=
 
 function bailout()
 {
@@ -40,6 +42,7 @@ function print_usage()
     echo ""
     echo "     docker-pull: Download the $shortname docker image"
     echo "     docker-run: Create and start the $shortname docker container"
+    echo "     docker-run-interactive: Start a shell to run $shortname (for debugging)"
     echo "     docker-status: Show the status of the $shortname docker container"
     echo "     docker-kill: Kill the $shortname docker container"
     echo "     docker-restart: Restart the $shortname docker container"
@@ -62,6 +65,9 @@ function print_usage()
     echo "       (default \"$DEF_BIND_ADDRESS\")"
     echo "   [--bind-port <port to bind ${shortname} to>"
     echo "       (default \"$DEF_BIND_PORT\")"
+    echo "   [--controller-address <address of the MUD controller>"
+    echo "       The address to use for any MUD \"controller\" references"
+    echo "       (default \"$DEF_CONTROLLER_ADDRESS\")"
 }
 
 function process_arguments()
@@ -76,6 +82,7 @@ function process_arguments()
     mud_cache_path="$DEF_MUD_CACHE_PATH"
     bind_address="$DEF_BIND_ADDRESS"
     bind_port="$DEF_BIND_PORT"
+    controller_address="$DEF_CONTROLLER_ADDRESS"
 
     while [[ $1 == --* ]]; do
         opt_name=$1
@@ -103,6 +110,10 @@ function process_arguments()
             shift
             bind_port="$1"
             shift || bailout_with_usage "missing parameter to $opt_name"
+        elif [ "$opt_name" == "--controller-address" ]; then
+            shift
+            controller_address="$1"
+            shift || bailout_with_usage "missing parameter to $opt_name"
         else
             bailout_with_usage "Unrecognized option: $opt_name"
         fi
@@ -128,24 +139,58 @@ function docker-run()
         bailout "Invalid MUD cache directory: $mud_cache_path"
     fi
 
+    if [ ! -z "$controller_address" ]; then
+        mud_controller_args=(--controller "$controller_address")
+    fi
+
+    if [ ! -z "$tls_cert_chain_file" -a ! -z "$tls_priv_key_file" ]; then
+        cert_key_mount_args=(--mount type=bind,source="$tls_cert_chain_file",target=/app/lib/tls-cert-chain.pem,readonly
+                             --mount type=bind,source="$tls_priv_key_file",target=/app/lib/tls-key.pem,readonly)
+        cert_key_command_args=(--cert-chain-file /app/lib/tls-cert-chain.pem
+                               --cert-key-file /app/lib/tls-key.pem)
+    fi
+
+    if [ ! -z "$debug" ]; then
+        debug_opt="--debug"
+    fi
+
+    docker_run_params=(python3.6 mudManager.py
+                              $debug_opt
+                              --bind-port "$bind_port"
+                              --cache-dir "/mud-cache-dir"
+                              "${mud_controller_args[@]}"
+                              "${cert_key_command_args[@]}")
+
+    exec_options=(--read-only -d --restart unless-stopped)
+
+    if [ $1 == "interactive" ]; then
+        echo "Starting interactive shell."
+        echo -n "Start the service manually using:"
+        for arg in "${docker_run_params[@]}" ; do echo -n " \"$arg\""; done;
+        echo ""
+        docker_run_params=(/bin/bash)
+        exec_options=(-it)
+    else
+        echo "Starting the $longname as a docker service."
+        echo "The the $longname service will restart on error or on system restart."
+        echo "Use '$shortname docker-kill' to terminate the service"
+    fi
+
     echo "Starting container \"$container_name\" from $docker_image_id:$docker_image_tag (on $bind_address:$bind_port)"
-    $DOCKER_CMD run --read-only -d --restart unless-stopped \
-        --name $container_name \
+    $DOCKER_CMD run "${exec_options[@]}" \
+        --name "$container_name" \
+        -p "$bind_address:$bind_port:$bind_port" \
 		-v $mud_cache_path:/mud-cache-dir \
-        -p $bind_address:$bind_port:$bind_port \
-        $docker_image_id:$docker_image_tag python3.6 mudManager.py \
-                         --bind-port $bind_port \
-                         --cache-dir /mud-cache-dir
+        "${cert_key_mount_args[@]}" \
+        "$docker_image_id:$docker_image_tag" \
+        "${docker_run_params[@]}"
 }
 
-function docker-run-shell()
+function docker-run-interactive()
 {
-    echo "Starting shell for container \"$container_name\" from $docker_image_id:$docker_image_tag (on $bind_address:$bind_port)"
-    $DOCKER_CMD run --read-only \
-        --name $container_name \
-		-v $mud_cache_path:/mud-cache-dir \
-        -p $bind_address:$bind_port:$bind_port \
-        -it $docker_image_id:$docker_image_tag /bin/bash
+    docker-run interactive
+    sleep 1
+    docker-rm
 }
 
 function docker-rm()

@@ -35,6 +35,9 @@ arg_parser.add_argument ('--cache-dir', "-cd", required=False, action='store', t
 arg_parser.add_argument ('--controller', "-con", required=False, action='store', type=str,
                          default = os.environ.get('MICRONETS_MUD_CONTROLLER') or None,
                          help="the hostname or address that should be provided for \"controller\" MUD entries")
+arg_parser.add_argument ('--debug', "-d,", required=False, action='store_true',
+                         default = os.environ.get('MICRONETS_MUD_DEBUG') == "True",
+                         help="Enables debugging output/checks")
 
 args = arg_parser.parse_args ()
 
@@ -44,6 +47,8 @@ logger.info(f"CA path: {args.ca_path}")
 logger.info(f"Additional CA certs: {args.ca_certs.name if args.ca_certs else None}")
 logger.info(f"MUD cache directory: {args.cache_dir}")
 logger.info(f"Controller: {args.controller}")
+
+logger.warning("No Controller address specified. MUD files with 'Controller` predicates will not operate correctly")
 
 mud_cache_path = Path(args.cache_dir)
 if not mud_cache_path.exists():
