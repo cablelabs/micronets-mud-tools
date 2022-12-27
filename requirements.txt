@@ -31,5 +31,5 @@ Quart==0.6.15
     MarkupSafe==1.1.1
   multidict==4.7.1
   sortedcontainers==2.1.0
-setuptools==42.0.2
+setuptools==65.5.1
 wheel==0.33.6
